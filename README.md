@@ -197,4 +197,6 @@ This removes the test files generated inside `ssh-test` without deleting your ac
 
 GitHub: https://github.com/jamieduk
 
+Main Site jnetai.com
+
 Copyright (c) J~Net 2026
