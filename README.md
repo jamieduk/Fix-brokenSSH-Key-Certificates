@@ -7,6 +7,8 @@ A Bash utility to repair malformed SSH public keys, private keys and SSH certifi
 **Discussion:** [Don't put SSH certificates or any other security-related certificates into an LLM](https://jnet.forumotion.com/t2212-dont-put-ssh-certificates-or-any-other-security-related-certificates-to-llm-instead-use-a-safe-bash-function-to-fix-broken-certs#3394)
 
 ---
+<img width="1246" height="265" alt="Screenshot From 2026-11-12 20-54-36" src="https://github.com/user-attachments/assets/06fe3075-1ac9-49f8-8a17-77386884caff" />
+
 
 ## Why?
 
