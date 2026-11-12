@@ -1,0 +1,154 @@
+
+#!/bin/bash
+# (c) J~Net 2026
+#
+# fix_certificate filename
+# fix_certificate filename output_filename
+#
+# https://jnet.forumotion.com/t2212-dont-put-ssh-certificates-or-any-other-security-related-certificates-to-llm-instead-use-a-safe-bash-function-to-fix-broken-certs#3394
+#
+# Repair malformed SSH keys and certificates.
+# Output defaults to current working directory.
+
+fix_certificate() {
+    local input="$1"
+    local output="${2:-./$(basename "$1").fixed}"
+    local temp
+    local original_size
+    local repaired_size
+
+    if [[ -z "$input" || ! -f "$input" ]]; then
+        echo "[ERROR] Certificate file not found: $input"
+        return 1
+    fi
+
+    # Prevent overwriting the original certificate
+    if [[ "$(realpath -m "$output")" == "$(realpath -m "$input")" ]]; then
+        echo "[ERROR] Output cannot overwrite the original certificate."
+        return 1
+    fi
+
+    # Prevent overwriting existing files
+    if [[ -e "$output" ]]; then
+        echo "[ERROR] Output file already exists: $output"
+        return 1
+    fi
+
+    # Create temporary output file
+    temp=$(mktemp) || return 1
+
+    original_size=$(stat -c%s "$input")
+
+    # Repair certificate formatting
+    if ! python3 - "$input" "$temp" <<'PY'
+import sys
+import re
+
+source, destination=sys.argv[1:3]
+
+with open(source, "r", encoding="utf-8", errors="strict") as f:
+    data=f.read()
+
+# Remove UTF-8 BOM and normalise line endings
+data=data.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+
+# Convert literal escaped newlines into actual newlines
+data=data.replace("\\r\\n", "\n")
+data=data.replace("\\n", "\n")
+data=data.replace("\\r", "\n")
+
+# Remove accidental escaped quotation marks
+data=data.replace('\\"', '"')
+
+# Remove ANSI escape sequences
+data=re.sub(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|.)', '', data)
+
+# Remove surrounding whitespace
+data=data.strip()
+
+# Detect PEM-formatted certificates and keys
+pem=re.fullmatch(
+    r'-----BEGIN ([A-Z0-9 ]+)-----\s*(.*?)\s*-----END \1-----',
+    data,
+    re.DOTALL
+)
+
+if pem:
+    header, body=pem.groups()
+
+    # Remove whitespace from PEM Base64 body
+    body=re.sub(r'\s+', '', body)
+
+    # Restore standard 64-character PEM lines
+    body='\n'.join(
+        body[i:i+64] for i in range(0, len(body), 64)
+    )
+
+    data=f"-----BEGIN {header}-----\n{body}\n-----END {header}-----"
+
+else:
+    # Reconstruct SSH public keys and certificates as a single line
+    data=' '.join(data.split())
+
+with open(destination, "w", encoding="utf-8", newline="\n") as f:
+    f.write(data + "\n")
+PY
+    then
+        rm -f "$temp"
+        echo "[ERROR] Certificate repair failed."
+        return 1
+    fi
+
+    # Move repaired file into current working directory
+    if ! mv "$temp" "$output"; then
+        rm -f "$temp"
+        echo "[ERROR] Could not save repaired certificate."
+        return 1
+    fi
+
+    # Restrict output permissions
+    chmod 600 "$output" || {
+        echo "[WARNING] Could not set output permissions."
+    }
+
+    repaired_size=$(stat -c%s "$output")
+
+    echo
+    echo "========== CERTIFICATE REPAIR =========="
+
+    if cmp -s "$input" "$output"; then
+        echo "[INFO] No formatting changes were necessary."
+    else
+        echo "[OK] Certificate formatting changed."
+    fi
+
+    echo "[INFO] Original size: ${original_size} bytes"
+    echo "[INFO] Repaired size: ${repaired_size} bytes"
+    echo "[OK] Output file: $(realpath "$output")"
+
+    # Validate using OpenSSH
+    if command -v ssh-keygen >/dev/null 2>&1; then
+
+        if ssh-keygen -lf "$output" >/dev/null 2>&1; then
+            echo "[OK] SSH key/certificate recognised."
+
+            # Display additional certificate information when applicable
+            if ssh-keygen -L -f "$output" >/dev/null 2>&1; then
+                echo "[OK] SSH certificate structure validated."
+            fi
+
+        else
+            echo "[WARNING] SSH validation failed."
+            echo "[INFO] Formatting was repaired, but cryptographic validity is unconfirmed."
+        fi
+
+    else
+        echo "[WARNING] ssh-keygen is not installed."
+    fi
+
+    echo "========================================"
+}
+
+# Execute certificate repair
+fix_certificate "$@"
+

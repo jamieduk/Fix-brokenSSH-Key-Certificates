@@ -1,0 +1,24 @@
+
+Fix Broken SSh Key Certificate Files
+
+https://jnet.forumotion.com/t2212-dont-put-ssh-certificates-or-any-other-security-related-certificates-to-llm-instead-use-a-safe-bash-function-to-fix-broken-certs#3394
+
+
+
+chmod +x fix_certificate *.sh
+
+./setup.sh
+
+
+./create_broken_cert.sh
+
+cp ssh-test/broken_cert.pub .
+fix_certificate broken_cert.pub
+cat -A broken_cert.pub.fixed
+
+
+Validate it...
+
+ssh-keygen -L -f broken_cert.pub.fixed
+
+
